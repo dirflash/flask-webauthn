@@ -1,12 +1,13 @@
-FROM python:3.13
+FROM python:3.10-slim-bullseye
 
-RUN apt-get update
-RUN apt-get install -y wait-for-it
-RUN pip install poetry
-RUN pip install waitress
-ADD . /app
+RUN apt-get update && \
+	apt-get install -y --no-install-recommends ca-certificates wait-for-it build-essential python3-dev curl && \
+	rm -rf /var/lib/apt/lists/*
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
 WORKDIR /app
-RUN poetry export -o requirements.txt
-RUN pip install -r requirements.txt
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host pypi.python.org -r requirements.txt
+COPY . /app
 
 CMD sh ./entrypoint.sh
