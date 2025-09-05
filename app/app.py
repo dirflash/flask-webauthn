@@ -1,5 +1,14 @@
-# https://rickhenry.dev/blog/posts/2022-06-19-flask-webauthn-demo-1/
+"""
+Flask WebAuthn Demo Application
 
+Implementation of passkeys with Flask and SQLAlchemy
+
+This module initializes the Flask app, configures the database and migration,
+and defines the main route.
+
+Based on the tutorial at:
+https://rickhenry.dev/blog/posts/2022-06-19-flask-webauthn-demo-1/
+"""
 
 import os
 
