@@ -29,6 +29,10 @@ Migrate(app, db)
 
 @app.route("/")
 def index():
+    """
+    Main route for the Flask application.
+    Returns a simple greeting message.
+    """
     return "Hello, world!"
 
 
