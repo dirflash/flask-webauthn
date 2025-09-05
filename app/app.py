@@ -13,7 +13,7 @@ https://rickhenry.dev/blog/posts/2022-06-19-flask-webauthn-demo-1/
 import os
 
 from flask import Flask
-from flask_migrate import Migrate
+from flask_migrate import Migrate  # type: ignore
 from models import db
 
 app = Flask(__name__)
