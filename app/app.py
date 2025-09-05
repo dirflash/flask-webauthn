@@ -12,9 +12,12 @@ https://rickhenry.dev/blog/posts/2022-06-19-flask-webauthn-demo-1/
 
 import os
 
+from dotenv import load_dotenv
 from flask import Flask
 from flask_migrate import Migrate  # type: ignore
 from models import db
+
+load_dotenv()  # Load environment variables from .env file
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///site.db'
