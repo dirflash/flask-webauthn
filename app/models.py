@@ -9,7 +9,8 @@ def _str_uuid():
     return str(uuid.uuid4())
 
 
-class User(db.Model):
+# pylint: disable=too-few-public-methods
+class User(db.Model):  # type: ignore
     """A user in the database"""
 
     id = db.Column(db.Integer, primary_key=True)
