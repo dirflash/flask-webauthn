@@ -23,10 +23,18 @@
       <nav class="flex justify-end space-x-4 items-center">
         <!-- We'll come back and fill in the actual links later -->
         <div>
-          <a href="#" class="hover:underline font-bold text-xl">Login</a>
+          <a
+            href="{{ url_for('auth.login') }}"
+            class="hover:underline font-bold text-xl"
+            >Login</a
+          >
         </div>
         <div>
-          <a href="#" class="hover:underline font-bold text-xl">Register</a>
+          <a
+            href="{{ url_for('auth.register') }}"
+            class="hover:underline font-bold text-xl"
+            >Register</a
+          >
         </div>
       </nav>
     </header>
