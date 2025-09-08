@@ -13,7 +13,7 @@ https://rickhenry.dev/blog/posts/2022-06-19-flask-webauthn-demo-1/
 import os
 
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, render_template
 from flask_migrate import Migrate  # type: ignore
 from models import db
 
@@ -34,9 +34,9 @@ Migrate(app, db)
 def index():
     """
     Main route for the Flask application.
-    Returns a simple greeting message.
+    Returns index.html template.
     """
-    return "Hello, world!"
+    return render_template("index.html")
 
 
 if __name__ == "__main__":
