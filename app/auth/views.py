@@ -24,8 +24,11 @@ def create_user():
         db.session.add(user)
         db.session.commit()
     except IntegrityError:
-        db.session.rollback()
-        return make_response("Username or email already exists", 400)
+        return render_template(
+            "auth/_partials/user_creation_form.html",
+            error="That username or email address is already in use. "
+            "Please enter a different one.",
+        )
 
     return make_response("User created", 201)
 
