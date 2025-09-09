@@ -78,4 +78,3 @@ def add_credential():
 @auth.route("/login")
 def login():
     return "Login user"
-    return "Login user"
