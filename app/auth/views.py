@@ -1,7 +1,9 @@
 from auth import security
-from flask import Blueprint, make_response, render_template, request, session
+from flask import Blueprint, abort, make_response, render_template, request, session
 from models import User, db
 from sqlalchemy.exc import IntegrityError
+from webauthn.helpers.exceptions import InvalidRegistrationResponse
+from webauthn.helpers.structs import RegistrationCredential
 
 auth = Blueprint("auth", __name__, template_folder="templates")
 
@@ -10,6 +12,18 @@ auth = Blueprint("auth", __name__, template_folder="templates")
 def register():
     """Show the form to register a new user"""
     return render_template("auth/register.html")
+
+
+@auth.route("/register-credential", methods=["POST"])
+def register_credential():
+    """Receive a newly registered credentials to validate and save."""
+    user_uid = session.get("registration_user_uid")
+    if not user_uid:
+        abort(make_response("Error user not found", 400))
+
+    registration_credential = RegistrationCredential.parse_raw(request.get_data())
+
+    return "Register credential"
 
 
 @auth.route("/create-user", methods=["POST"])
@@ -41,6 +55,24 @@ def create_user():
     session["registration_user_uid"] = user.uid
 
     return res
+
+
+@auth.route("/add-credential", methods=["POST"])
+def add_credential():
+    """Receive a newly registered credentials to validate and save."""
+    user_uid = session.get("registration_user_uid")
+    if not user_uid:
+        abort(make_response("Error user not found", 400))
+
+    registration_credential = RegistrationCredential.parse_raw(request.get_data())
+    user = User.query.filter_by(uid=user_uid).first()
+
+    try:
+        security.verify_and_save_credential(user, registration_credential)
+        session["registration_user_uid"] = None
+        return make_response('{"verified": true}', 201)
+    except InvalidRegistrationResponse:
+        abort(make_response('{"verified": false}', 400))
 
 
 @auth.route("/login")

@@ -1,10 +1,10 @@
-"""flake8: noqa: F401, E261, E302, E305"""
 import datetime
 import os
 from urllib.parse import urlparse
 
 import webauthn
 from flask import request
+from models import WebAuthnCredential, db
 from redis import Redis
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -41,3 +41,28 @@ def prepare_credential_creation(user):
     REGISTRATION_CHALLENGES.expire(user.uid, datetime.timedelta(minutes=10))
 
     return webauthn.options_to_json(public_credential_creation_options)
+
+
+def verify_and_save_credential(user, registration_credential):
+    """Verify that a new credential is valid for the"""
+    expected_challenge = REGISTRATION_CHALLENGES.get(user.uid)
+
+    # If the credential is somehow invalid (i.e. the challenge is wrong),
+    # this will raise an exception. It's easier to handle that in the view
+    # since we can send back an error message directly.
+    auth_verification = webauthn.verify_registration_response(
+        credential=registration_credential,
+        expected_challenge=expected_challenge,
+        expected_origin=f"https://{_hostname()}",
+        expected_rp_id=_hostname(),
+    )
+
+    # At this point verification has succeeded and we can save the credential
+    credential = WebAuthnCredential(
+        user=user,
+        credential_public_key=auth_verification.credential_public_key,
+        credential_id=auth_verification.credential_id,
+    )
+
+    db.session.add(credential)
+    db.session.commit()
