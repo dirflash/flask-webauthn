@@ -12,11 +12,12 @@ https://rickhenry.dev/blog/posts/2022-06-19-flask-webauthn-demo-1/
 
 import os
 
-from auth.views import auth
 from dotenv import load_dotenv
 from flask import Flask, render_template
 from flask_migrate import Migrate  # type: ignore
 from models import db
+from auth.views import auth
+from admin.dbm import dbm
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -24,6 +25,7 @@ app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///site.db'
 
 app.register_blueprint(auth, url_prefix="/auth")
+app.register_blueprint(dbm, url_prefix="/dbm")
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 

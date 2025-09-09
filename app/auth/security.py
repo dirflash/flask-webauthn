@@ -29,10 +29,12 @@ def prepare_credential_creation(user):
     Generate the configuration needed by the client to start registering a new
     WebAuthn credential.
     """
+    user_id_bytes = str(user.id).encode("utf-8")
+
     public_credential_creation_options = webauthn.generate_registration_options(
         rp_id=_hostname(),
         rp_name="Flask WebAuthn Demo",
-        user_id=user.uid,
+        user_id=user_id_bytes,
         user_name=user.username,
     )
 
