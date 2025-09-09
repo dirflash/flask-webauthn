@@ -1,4 +1,5 @@
-from flask import Blueprint, make_response, render_template, request
+from auth import security
+from flask import Blueprint, make_response, render_template, request, session
 from models import User, db
 from sqlalchemy.exc import IntegrityError
 
@@ -30,9 +31,19 @@ def create_user():
             "Please enter a different one.",
         )
 
-    return make_response("User created", 201)
+    pcco_json = security.prepare_credential_creation(user)
+    res = make_response(
+        render_template(
+            "auth/_partials/register_credential.html",
+            public_credential_creation_options=pcco_json,
+        )
+    )
+    session["registration_user_uid"] = user.uid
+
+    return res
 
 
 @auth.route("/login")
 def login():
+    return "Login user"
     return "Login user"
