@@ -1,7 +1,8 @@
 {% extends 'base.html' %} {% block content %}
 <div>
   <div class="max-w-2xl mx-auto">
-    {% include "auth/_partials/user_creation_form.html" %}
+  <form hx-post="{{ url_for('auth.create_user') }}" hx-swap="outerHTML" class="flex-col max-w-sm mx-auto space-y-2">
+    <h4 class="text-2xl font-bold">Register</h4>
   </div>
 </div>
 {% endblock content %}
