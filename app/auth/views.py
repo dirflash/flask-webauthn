@@ -1,3 +1,5 @@
+import datetime
+
 from auth import security
 from flask import Blueprint, abort, make_response, render_template, request, session
 from models import User, db
@@ -67,11 +69,22 @@ def add_credential():
     registration_credential = RegistrationCredential(**request.get_json())
 
     user = User.query.filter_by(uid=user_uid).first()
+    if user is None:
+        abort(make_response("User not found", 400))
 
     try:
         security.verify_and_save_credential(user, registration_credential)
         session["registration_user_uid"] = None
-        return make_response('{"verified": true}', 201)
+        res = make_response('{"verified": true}', 201)
+        res.set_cookie(
+            "user_uid",
+            str(user.uid),
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=int(datetime.timedelta(days=30).total_seconds()),
+        )
+        return res
     except InvalidRegistrationResponse:
         abort(make_response('{"verified": false}', 400))
 
