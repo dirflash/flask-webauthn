@@ -45,16 +45,7 @@ def create_user():
             "Please enter a different one.",
         )
 
-    pcco_json = security.prepare_credential_creation(user)
-    res = make_response(
-        render_template(
-            "auth/_partials/register_credential.html",
-            public_credential_creation_options=pcco_json,
-        )
-    )
-    session["registration_user_uid"] = user.uid
-
-    return res
+    return make_response("User created", 201)
 
 
 @auth.route("/add-credential", methods=["POST"])
@@ -77,4 +68,5 @@ def add_credential():
 
 @auth.route("/login")
 def login():
+    return "Login user"
     return "Login user"
