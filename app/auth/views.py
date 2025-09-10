@@ -45,7 +45,16 @@ def create_user():
             "Please enter a different one.",
         )
 
-    return make_response("User created", 201)
+    pcco_json = security.prepare_credential_creation(user)
+    res = make_response(
+        render_template(
+            "auth/_partials/register_credential.html",
+            public_credential_creation_options=pcco_json,
+        )
+    )
+    session["registration_user_uid"] = user.uid
+
+    return res
 
 
 @auth.route("/add-credential", methods=["POST"])
@@ -55,7 +64,8 @@ def add_credential():
     if not user_uid:
         abort(make_response("Error user not found", 400))
 
-    registration_credential = RegistrationCredential.parse_raw(request.get_data())
+    registration_credential = RegistrationCredential(**request.get_json())
+
     user = User.query.filter_by(uid=user_uid).first()
 
     try:
@@ -68,5 +78,4 @@ def add_credential():
 
 @auth.route("/login")
 def login():
-    return "Login user"
     return "Login user"
