@@ -3,26 +3,48 @@ services:
     build:
       context: app
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgresql://webauthn_user:webauthn_pass@db:5432/webauthn_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - SECRET_KEY=${SECRET_KEY}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - SECRET_KEY=${SECRET_KEY:-flask-webauthn-secret-key-change-in-production}
+      - FLASK_ENV=production
+      - FLASK_APP=app.py
     volumes:
       - ./app:/app
     ports:
       - '5000:5000'
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   db:
-    image: postgres:latest
+    image: postgres:15-alpine
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=webauthn_user
+      - POSTGRES_PASSWORD=webauthn_pass
+      - POSTGRES_DB=webauthn_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webauthn_user -d webauthn_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   redis:
-    image: redis:latest
-    command: sh -c "redis-server --requirepass $REDIS_PASSWORD"
+    image: redis:7-alpine
+    command: sh -c "redis-server --requirepass ${REDIS_PASSWORD:-redis-default-password}"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
