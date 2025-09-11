@@ -5,19 +5,31 @@ from urllib.parse import urlparse
 import webauthn
 from flask import request
 from models import WebAuthnCredential, db
-from redis import Redis
 
+# Redis configuration with error handling
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
-REGISTRATION_CHALLENGES = Redis(
-    host=REDIS_HOST,
-    port=REDIS_PORT,
-    password=REDIS_PASSWORD,
-    db=0,
-    decode_responses=True,
-)
+# Initialize Redis with error handling
+REGISTRATION_CHALLENGES = None
+try:
+    from redis import Redis
+    REGISTRATION_CHALLENGES = Redis(
+        host=REDIS_HOST,
+        port=REDIS_PORT,
+        password=REDIS_PASSWORD,
+        db=0,
+        decode_responses=True,
+    )
+    # Test connection
+    REGISTRATION_CHALLENGES.ping()
+    print("Redis connection successful")
+except Exception as e:
+    print(f"Redis connection failed: {e}")
+    print("Falling back to in-memory storage (not recommended for production)")
+    # Fallback to in-memory storage
+    REGISTRATION_CHALLENGES = {}
 
 
 def _hostname():
@@ -35,54 +47,114 @@ def _origin():
         return f"https://{parsed.netloc}"
 
 
+def _store_challenge(user_uid, challenge):
+    """Store challenge with fallback to in-memory storage"""
+    try:
+        if hasattr(REGISTRATION_CHALLENGES, 'set'):
+            # Redis storage
+            REGISTRATION_CHALLENGES.set(user_uid, challenge)
+            REGISTRATION_CHALLENGES.expire(user_uid, datetime.timedelta(minutes=10))
+        else:
+            # In-memory fallback
+            REGISTRATION_CHALLENGES[user_uid] = {
+                'challenge': challenge,
+                'expires': datetime.datetime.now() + datetime.timedelta(minutes=10)
+            }
+    except Exception as e:
+        print(f"Error storing challenge: {e}")
+        raise
+
+
+def _get_challenge(user_uid):
+    """Get challenge with fallback to in-memory storage"""
+    try:
+        if hasattr(REGISTRATION_CHALLENGES, 'get'):
+            # Redis storage
+            return REGISTRATION_CHALLENGES.get(user_uid)
+        else:
+            # In-memory fallback
+            stored = REGISTRATION_CHALLENGES.get(user_uid)
+            if stored and stored['expires'] > datetime.datetime.now():
+                return stored['challenge']
+            elif stored:
+                # Expired
+                del REGISTRATION_CHALLENGES[user_uid]
+            return None
+    except Exception as e:
+        print(f"Error retrieving challenge: {e}")
+        return None
+
+
+def _delete_challenge(user_uid):
+    """Delete challenge with fallback to in-memory storage"""
+    try:
+        if hasattr(REGISTRATION_CHALLENGES, 'delete'):
+            # Redis storage
+            REGISTRATION_CHALLENGES.delete(user_uid)
+        else:
+            # In-memory fallback
+            REGISTRATION_CHALLENGES.pop(user_uid, None)
+    except Exception as e:
+        print(f"Error deleting challenge: {e}")
+
+
 def prepare_credential_creation(user):
     """
     Generate the configuration needed by the client to start registering a new
     WebAuthn credential.
     """
-    user_id_bytes = str(user.id).encode("utf-8")
+    try:
+        user_id_bytes = str(user.id).encode("utf-8")
 
-    public_credential_creation_options = webauthn.generate_registration_options(
-        rp_id=_hostname(),
-        rp_name="Flask WebAuthn Demo",
-        user_id=user_id_bytes,
-        user_name=user.username,
-        user_display_name=user.display_name or user.username,
-    )
+        public_credential_creation_options = webauthn.generate_registration_options(
+            rp_id=_hostname(),
+            rp_name="Flask WebAuthn Demo",
+            user_id=user_id_bytes,
+            user_name=user.username,
+            user_display_name=user.name or user.username,  # Ensure display name exists
+        )
 
-    # Redis is perfectly happy to store the binary challenge value.
-    REGISTRATION_CHALLENGES.set(user.uid, public_credential_creation_options.challenge)
-    REGISTRATION_CHALLENGES.expire(user.uid, datetime.timedelta(minutes=10))
+        # Store challenge
+        _store_challenge(user.uid, public_credential_creation_options.challenge)
 
-    return webauthn.options_to_json(public_credential_creation_options)
+        return webauthn.options_to_json(public_credential_creation_options)
+
+    except Exception as e:
+        print(f"Error preparing credential creation: {e}")
+        raise
 
 
 def verify_and_save_credential(user, registration_credential):
-    """Verify that a new credential is valid for the"""
-    expected_challenge = REGISTRATION_CHALLENGES.get(user.uid)
+    """Verify that a new credential is valid"""
+    try:
+        expected_challenge = _get_challenge(user.uid)
 
-    if not expected_challenge:
-        raise ValueError("No challenge found for user. Please try registration again.")
+        if not expected_challenge:
+            raise ValueError("No challenge found for user. Please try registration again.")
 
-    # If the credential is somehow invalid (i.e. the challenge is wrong),
-    # this will raise an exception. It's easier to handle that in the view
-    # since we can send back an error message directly.
-    auth_verification = webauthn.verify_registration_response(
-        credential=registration_credential,
-        expected_challenge=expected_challenge,
-        expected_origin=f"https://{_hostname()}",
-        expected_rp_id=_hostname(),
-    )
+        # Verify the registration response
+        auth_verification = webauthn.verify_registration_response(
+            credential=registration_credential,
+            expected_challenge=expected_challenge,
+            expected_origin=_origin(),
+            expected_rp_id=_hostname(),
+        )
 
-    # At this point verification has succeeded and we can save the credential
-    credential = WebAuthnCredential(
-        user=user,
-        credential_public_key=auth_verification.credential_public_key,
-        credential_id=auth_verification.credential_id,
-    )
+        # Save the credential
+        credential = WebAuthnCredential(
+            user=user,
+            credential_public_key=auth_verification.credential_public_key,
+            credential_id=auth_verification.credential_id,
+        )
 
-    db.session.add(credential)
-    db.session.commit()
+        db.session.add(credential)
+        db.session.commit()
 
-    # Once we've successfully registered, we can remove the challenge
-    REGISTRATION_CHALLENGES.delete(user.uid)
+        # Clean up the challenge
+        _delete_challenge(user.uid)
+
+        return auth_verification
+
+    except Exception as e:
+        print(f"Error verifying credential: {e}")
+        raise
