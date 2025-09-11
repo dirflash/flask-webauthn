@@ -8,21 +8,30 @@ if [ "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "postgresql"; then
     wait-for-it -t 30 db:5432 -- echo "PostgreSQL is ready"
     
     echo "Running database migrations..."
-    flask db upgrade || echo "No migrations to run"
+    # Initialize migrations if they don't exist
+    if [ ! -d "migrations/versions" ] || [ -z "$(ls -A migrations/versions 2>/dev/null)" ]; then
+        echo "No migrations found, creating initial migration..."
+        flask db init || echo "Migrations already initialized"
+        flask db migrate -m "Initial migration" || echo "Migration creation failed"
+    fi
+    
+    # Apply migrations
+    flask db upgrade || echo "Migration upgrade failed"
+    
 else
     echo "Using SQLite database (local development)"
-fi
-
-echo "Creating database tables..."
-python -c "
+    # For SQLite, we can use manual table creation
+    echo "Creating database tables..."
+    python -c "
 from app import app, db
 with app.app_context():
     try:
         db.create_all()
-        print('Database tables created successfully')
+        print('✅ Database tables created successfully')
     except Exception as e:
-        print(f'Error creating tables: {e}')
+        print(f'❌ Error creating tables: {e}')
 "
+fi
 
 echo "Starting application server..."
 if [ "$FLASK_ENV" = "development" ]; then

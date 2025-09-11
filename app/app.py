@@ -44,6 +44,7 @@ migrate = Migrate(app, db)
 app.register_blueprint(auth)  # auth blueprint has no prefix
 app.register_blueprint(dbm)   # dbm blueprint already has /dbm prefix
 
+
 @app.route("/")
 def index():
     """
@@ -52,18 +53,25 @@ def index():
     """
     return render_template("index.html")
 
-def create_tables():
-    """Create database tables if they don't exist - Flask 2.2+ compatible"""
+
+def create_tables_if_needed():
+    """Create database tables only for SQLite/development"""
     try:
-        with app.app_context():
-            db.create_all()
-            print("✅ Database tables created successfully")
+        database_url = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+
+        # Only create tables manually for SQLite (development)
+        if "sqlite" in database_url.lower():
+            with app.app_context():
+                db.create_all()
+                print("✅ SQLite database tables created successfully")
+        else:
+            print("ℹ️  Using PostgreSQL - tables managed by migrations")
+
     except Exception as e:
-        print(f"❌ Error creating tables: {e}")
+        print(f"❌ Error in table creation: {e}")
 
-# Initialize database tables when the app starts
-with app.app_context():
-    create_tables()
 
+# Initialize database tables for development only
 if __name__ == "__main__":
+    create_tables_if_needed()
     app.run(host="0.0.0.0", port=5000, debug=True)

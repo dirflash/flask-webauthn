@@ -6,7 +6,7 @@ services:
       - DATABASE_URL=postgresql://webauthn_user:webauthn_pass@db:5432/webauthn_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis-default-password}
       - SECRET_KEY=${SECRET_KEY:-flask-webauthn-secret-key-change-in-production}
       - FLASK_ENV=production
       - FLASK_APP=app.py
@@ -20,6 +20,27 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+  # Database reset service (run once to reset DB)
+  db-reset:
+    build:
+      context: app
+    environment:
+      - DATABASE_URL=postgresql://webauthn_user:webauthn_pass@db:5432/webauthn_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis-default-password}
+      - SECRET_KEY=${SECRET_KEY:-flask-webauthn-secret-key-change-in-production}
+      - FLASK_ENV=production
+      - FLASK_APP=app.py
+    volumes:
+      - ./app:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python reset_db.py
+    profiles:
+      - reset
 
   db:
     image: postgres:15-alpine
