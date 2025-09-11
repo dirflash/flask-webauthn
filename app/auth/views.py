@@ -1,4 +1,5 @@
 import datetime
+import traceback
 
 from auth import security
 from flask import Blueprint, abort, make_response, render_template, request, session
@@ -37,6 +38,18 @@ def create_user():
                 error="Email is required."
             )
 
+        # Check if user already exists
+        existing_user = User.query.filter(
+            (User.username == username) | (User.email == email)
+        ).first()
+
+        if existing_user:
+            return render_template(
+                "auth/_partials/user_creation_form.html",
+                error="That username or email address is already in use. "
+                "Please enter a different one.",
+            )
+
         # Create user
         user = User(name=name or username, username=username, email=email)
 
@@ -59,8 +72,17 @@ def create_user():
             print(f"WebAuthn options generated for user: {user.username}")
         except Exception as e:
             print(f"Error generating WebAuthn options: {e}")
-            db.session.delete(user)
-            db.session.commit()
+            print(f"Full traceback: {traceback.format_exc()}")
+
+            # Clean up user if WebAuthn setup fails
+            try:
+                db.session.delete(user)
+                db.session.commit()
+                print(f"Cleaned up user {user.username} due to WebAuthn setup failure")
+            except Exception as cleanup_error:
+                print(f"Error cleaning up user: {cleanup_error}")
+                db.session.rollback()
+
             return render_template(
                 "auth/_partials/user_creation_form.html",
                 error="Failed to set up authentication. Please try again."
@@ -80,10 +102,56 @@ def create_user():
 
     except Exception as e:
         print(f"Unexpected error in create_user: {e}")
+        print(f"Full traceback: {traceback.format_exc()}")
         return render_template(
             "auth/_partials/user_creation_form.html",
             error="An unexpected error occurred. Please try again."
         )
+
+
+def parse_registration_credential(credential_data):
+    """Parse WebAuthn registration credential, handling browser compatibility issues"""
+    try:
+        print(f"Raw credential data received: {credential_data}")
+
+        # Handle different WebAuthn response formats
+        if not isinstance(credential_data, dict):
+            raise ValueError("Credential data must be a dictionary")
+
+        # The browser sends 'rawId' but Python webauthn library expects only 'id'
+        # Both represent the credential ID, but in different formats
+        if 'rawId' in credential_data and 'id' not in credential_data:
+            # Convert rawId to id if needed
+            credential_data['id'] = credential_data['rawId']
+
+        # Remove rawId to avoid conflicts
+        if 'rawId' in credential_data:
+            del credential_data['rawId']
+
+        # Ensure required fields are present
+        required_fields = ['id', 'response', 'type']
+        missing_fields = [field for field in required_fields if field not in credential_data]
+        if missing_fields:
+            raise ValueError(f"Missing required fields: {missing_fields}")
+
+        # Clean up the data - only keep fields the library expects
+        expected_fields = {
+            'id', 'response', 'type', 'clientExtensionResults', 'authenticatorAttachment'
+        }
+
+        cleaned_data = {k: v for k, v in credential_data.items() if k in expected_fields}
+
+        print(f"Cleaned credential data: {cleaned_data}")
+
+        # Create the RegistrationCredential object
+        registration_credential = RegistrationCredential(**cleaned_data)
+
+        return registration_credential
+
+    except Exception as e:
+        print(f"Error parsing registration credential: {e}")
+        print(f"Full traceback: {traceback.format_exc()}")
+        raise
 
 
 @auth.route("/add-credential", methods=["POST"])
@@ -92,20 +160,44 @@ def add_credential():
     try:
         user_uid = session.get("registration_user_uid")
         if not user_uid:
+            print("No user UID found in session")
             return make_response('{"verified": false, "error": "User not found in session"}', 400)
-
-        try:
-            registration_credential = RegistrationCredential(**request.get_json())
-        except Exception as e:
-            print(f"Error parsing credential data: {e}")
-            return make_response(f'{{"verified": false, "error": "Invalid credential data"}}', 400)
 
         user = User.query.filter_by(uid=user_uid).first()
         if user is None:
+            print(f"No user found with UID: {user_uid}")
             return make_response('{"verified": false, "error": "User not found"}', 400)
 
         try:
+            credential_data = request.get_json()
+            if not credential_data:
+                print("No JSON data received")
+                return make_response('{"verified": false, "error": "No credential data received"}', 400)
+
+            registration_credential = parse_registration_credential(credential_data)
+
+        except Exception as e:
+            print(f"Error parsing credential data: {e}")
+            print(f"Full traceback: {traceback.format_exc()}")
+
+            # Clean up user if credential parsing fails
+            try:
+                print(f"Cleaning up user {user.username} due to credential parsing failure")
+                session.pop("registration_user_uid", None)
+                db.session.delete(user)
+                db.session.commit()
+                print(f"Successfully cleaned up user {user.username}")
+            except Exception as cleanup_error:
+                print(f"Error cleaning up user: {cleanup_error}")
+                db.session.rollback()
+
+            return make_response(f'{{"verified": false, "error": "Invalid credential data: {str(e)}"}}', 400)
+
+        try:
+            print(f"Attempting to verify and save credential for user: {user.username}")
             security.verify_and_save_credential(user, registration_credential)
+
+            # Clear session only after successful verification
             session.pop("registration_user_uid", None)
 
             res = make_response('{"verified": true}', 201)
@@ -117,20 +209,68 @@ def add_credential():
                 samesite="strict",
                 max_age=int(datetime.timedelta(days=30).total_seconds()),
             )
+            print(f"✅ WebAuthn credential successfully registered for user: {user.username}")
             return res
 
         except InvalidRegistrationResponse as e:
             print(f"Registration verification failed: {e}")
+            print(f"Full traceback: {traceback.format_exc()}")
+
+            # Clean up user if verification fails
+            try:
+                print(f"Cleaning up user {user.username} due to verification failure")
+                session.pop("registration_user_uid", None)
+                db.session.delete(user)
+                db.session.commit()
+                print(f"Successfully cleaned up user {user.username}")
+            except Exception as cleanup_error:
+                print(f"Error cleaning up user: {cleanup_error}")
+                db.session.rollback()
+
             return make_response(f'{{"verified": false, "error": "Registration verification failed"}}', 400)
+
         except Exception as e:
             print(f"Unexpected error during verification: {e}")
+            print(f"Full traceback: {traceback.format_exc()}")
+
+            # Clean up user if unexpected error occurs
+            try:
+                print(f"Cleaning up user {user.username} due to unexpected error")
+                session.pop("registration_user_uid", None)
+                db.session.delete(user)
+                db.session.commit()
+                print(f"Successfully cleaned up user {user.username}")
+            except Exception as cleanup_error:
+                print(f"Error cleaning up user: {cleanup_error}")
+                db.session.rollback()
+
             return make_response(f'{{"verified": false, "error": "Verification failed"}}', 500)
 
     except Exception as e:
         print(f"Unexpected error in add_credential: {e}")
+        print(f"Full traceback: {traceback.format_exc()}")
         return make_response('{"verified": false, "error": "Internal server error"}', 500)
 
 
-@auth.route("/login")
+@auth.route("/cleanup-failed-registration", methods=["POST"])
+def cleanup_failed_registration():
+    """Clean up failed registration attempts"""
+    try:
+        user_uid = session.get("registration_user_uid")
+        if user_uid:
+            user = User.query.filter_by(uid=user_uid).first()
+            if user:
+                db.session.delete(user)
+                db.session.commit()
+                session.pop("registration_user_uid", None)
+                print(f"Cleaned up failed registration for user: {user.username}")
+
+        return make_response('{"cleaned": true}', 200)
+    except Exception as e:
+        print(f"Error in cleanup: {e}")
+        return make_response('{"cleaned": false}', 500)
+
+
+@auth.route("/login")  
 def login():
     return "Login user"
