@@ -24,6 +24,17 @@ def _hostname():
     return str(urlparse(request.base_url).hostname)
 
 
+def _origin():
+    """Get the origin for WebAuthn, handling both HTTP (dev) and HTTPS (prod)"""
+    parsed = urlparse(request.base_url)
+    # For development, allow HTTP. For production, use HTTPS
+    if parsed.hostname in ['localhost', '127.0.0.1'] or os.getenv('FLASK_ENV') == 'development':
+        return f"{parsed.scheme}://{parsed.netloc}"
+    else:
+        # Force HTTPS for production
+        return f"https://{parsed.netloc}"
+
+
 def prepare_credential_creation(user):
     """
     Generate the configuration needed by the client to start registering a new
@@ -36,6 +47,7 @@ def prepare_credential_creation(user):
         rp_name="Flask WebAuthn Demo",
         user_id=user_id_bytes,
         user_name=user.username,
+        user_display_name=user.display_name or user.username,
     )
 
     # Redis is perfectly happy to store the binary challenge value.
@@ -48,6 +60,9 @@ def prepare_credential_creation(user):
 def verify_and_save_credential(user, registration_credential):
     """Verify that a new credential is valid for the"""
     expected_challenge = REGISTRATION_CHALLENGES.get(user.uid)
+
+    if not expected_challenge:
+        raise ValueError("No challenge found for user. Please try registration again.")
 
     # If the credential is somehow invalid (i.e. the challenge is wrong),
     # this will raise an exception. It's easier to handle that in the view
@@ -68,3 +83,6 @@ def verify_and_save_credential(user, registration_credential):
 
     db.session.add(credential)
     db.session.commit()
+
+    # Once we've successfully registered, we can remove the challenge
+    REGISTRATION_CHALLENGES.delete(user.uid)

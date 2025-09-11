@@ -66,11 +66,14 @@ def add_credential():
     if not user_uid:
         abort(make_response("Error user not found", 400))
 
-    registration_credential = RegistrationCredential(**request.get_json())
+    try:
+        registration_credential = RegistrationCredential(**request.get_json())
+    except Exception as e:
+        return make_response(f'{{"verified": false, "error": "Invalid credential data: {str(e)}"}}', 400)
 
     user = User.query.filter_by(uid=user_uid).first()
     if user is None:
-        abort(make_response("User not found", 400))
+        return make_response('{"verified": false, "error": "User not found"}', 400)
 
     try:
         security.verify_and_save_credential(user, registration_credential)
@@ -80,13 +83,15 @@ def add_credential():
             "user_uid",
             str(user.uid),
             httponly=True,
-            secure=True,
+            secure=request.is_secure,  # Only secure in HTTPS
             samesite="strict",
             max_age=int(datetime.timedelta(days=30).total_seconds()),
         )
         return res
     except InvalidRegistrationResponse:
         abort(make_response('{"verified": false}', 400))
+    except Exception as e:
+        return make_response(f'{{"verified": false, "error": "Unexpected error: {str(e)}"}}', 500)
 
 
 @auth.route("/login")
