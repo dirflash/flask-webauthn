@@ -119,9 +119,7 @@ def parse_registration_credential(credential_data):
             raise ValueError("Credential data must be a dictionary")
 
         # The browser sends 'rawId' but Python webauthn library expects only 'id'
-        # Both represent the credential ID, but in different formats
         if 'rawId' in credential_data and 'id' not in credential_data:
-            # Convert rawId to id if needed
             credential_data['id'] = credential_data['rawId']
 
         # Remove rawId to avoid conflicts
@@ -134,9 +132,10 @@ def parse_registration_credential(credential_data):
         if missing_fields:
             raise ValueError(f"Missing required fields: {missing_fields}")
 
-        # Clean up the data - only keep fields the library expects
+        # Clean up the data - only keep the 3 core fields the library expects
+        # Based on webauthn library version 2.7.0, RegistrationCredential only accepts:
         expected_fields = {
-            'id', 'response', 'type', 'clientExtensionResults', 'authenticatorAttachment'
+            'id', 'response', 'type'
         }
 
         cleaned_data = {k: v for k, v in credential_data.items() if k in expected_fields}
