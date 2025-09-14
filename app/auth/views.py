@@ -154,16 +154,24 @@ def parse_registration_credential(credential_data):
         print(f"Cleaned credential data: {cleaned_data}")
 
         # Create the RegistrationCredential object
-        # The webauthn library expects specific field names in the response
+        # The webauthn library expects specific field names and structure
         if 'response' in cleaned_data and isinstance(cleaned_data['response'], dict):
-            response = cleaned_data['response']
-            # Map clientDataJSON to client_data_json if needed
-            if 'clientDataJSON' in response and 'client_data_json' not in response:
-                response['client_data_json'] = response['clientDataJSON']
-            # Map attestationObject to attestation_object if needed  
-            if 'attestationObject' in response and 'attestation_object' not in response:
-                response['attestation_object'] = response['attestationObject']
+            response_dict = cleaned_data['response'].copy()
 
+            # Create a proper response object structure
+            from webauthn.helpers.structs import AuthenticatorAttestationResponse
+
+            # Map the browser field names to what the library expects
+            response_data = {}
+            if 'clientDataJSON' in response_dict:
+                response_data['client_data_json'] = response_dict['clientDataJSON']
+            if 'attestationObject' in response_dict:
+                response_data['attestation_object'] = response_dict['attestationObject']
+
+            # Create the AuthenticatorAttestationResponse object
+            cleaned_data['response'] = AuthenticatorAttestationResponse(**response_data)
+
+        print(f"Final credential data structure: {type(cleaned_data['response'])}")
         registration_credential = RegistrationCredential(**cleaned_data)
 
         return registration_credential
