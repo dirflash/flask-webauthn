@@ -118,14 +118,14 @@ def parse_registration_credential(credential_data):
         if not isinstance(credential_data, dict):
             raise ValueError("Credential data must be a dictionary")
 
-        # The browser sends 'rawId' but Python webauthn library expects only 'id'
-        # Both represent the credential ID, but in different formats
-        if 'rawId' in credential_data and 'id' not in credential_data:
-            # Convert rawId to id if needed
-            credential_data['id'] = credential_data['rawId']
-
-        # Remove rawId to avoid conflicts
+        # The browser sends 'rawId' but Python webauthn library expects 'raw_id'
+        # Map rawId to both id and raw_id
         if 'rawId' in credential_data:
+            if 'id' not in credential_data:
+                credential_data['id'] = credential_data['rawId']
+            # Map rawId to raw_id for the webauthn library
+            credential_data['raw_id'] = credential_data['rawId']
+            # Remove rawId to avoid conflicts
             del credential_data['rawId']
 
         # Ensure required fields are present
@@ -134,7 +134,7 @@ def parse_registration_credential(credential_data):
         if missing_fields:
             raise ValueError(f"Missing required fields: {missing_fields}")
 
-        # Ensure raw_id is present (should be mapped from rawId above)
+        # Ensure raw_id is present
         if 'raw_id' not in credential_data:
             raise ValueError("Missing raw_id field after mapping from rawId")
 
