@@ -1,5 +1,6 @@
 import datetime
 import os
+import base64
 from urllib.parse import urlparse
 
 import webauthn
@@ -11,7 +12,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
-# Initialize Redis with error handling
+# Initialize Redis with error handling - no decode_responses for binary data
 REGISTRATION_CHALLENGES = None
 try:
     from redis import Redis
@@ -20,7 +21,7 @@ try:
         port=REDIS_PORT,
         password=REDIS_PASSWORD,
         db=0,
-        decode_responses=True,
+        decode_responses=False,  # Changed to False to handle binary data
     )
     # Test connection
     REGISTRATION_CHALLENGES.ping()
@@ -51,8 +52,9 @@ def _store_challenge(user_uid, challenge):
     """Store challenge with fallback to in-memory storage"""
     try:
         if hasattr(REGISTRATION_CHALLENGES, 'set'):
-            # Redis storage
-            REGISTRATION_CHALLENGES.set(user_uid, challenge)
+            # Redis storage - encode challenge as base64 to handle binary data
+            challenge_b64 = base64.b64encode(challenge).decode('utf-8')
+            REGISTRATION_CHALLENGES.set(user_uid, challenge_b64)
             REGISTRATION_CHALLENGES.expire(user_uid, datetime.timedelta(minutes=10))
         else:
             # In-memory fallback
@@ -69,8 +71,11 @@ def _get_challenge(user_uid):
     """Get challenge with fallback to in-memory storage"""
     try:
         if hasattr(REGISTRATION_CHALLENGES, 'get'):
-            # Redis storage
-            return REGISTRATION_CHALLENGES.get(user_uid)
+            # Redis storage - decode from base64
+            challenge_b64 = REGISTRATION_CHALLENGES.get(user_uid)
+            if challenge_b64:
+                return base64.b64decode(challenge_b64.decode('utf-8') if isinstance(challenge_b64, bytes) else challenge_b64)
+            return None
         else:
             # In-memory fallback
             stored = REGISTRATION_CHALLENGES.get(user_uid)
