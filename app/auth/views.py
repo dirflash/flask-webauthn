@@ -154,6 +154,16 @@ def parse_registration_credential(credential_data):
         print(f"Cleaned credential data: {cleaned_data}")
 
         # Create the RegistrationCredential object
+        # The webauthn library expects specific field names in the response
+        if 'response' in cleaned_data and isinstance(cleaned_data['response'], dict):
+            response = cleaned_data['response']
+            # Map clientDataJSON to client_data_json if needed
+            if 'clientDataJSON' in response and 'client_data_json' not in response:
+                response['client_data_json'] = response['clientDataJSON']
+            # Map attestationObject to attestation_object if needed  
+            if 'attestationObject' in response and 'attestation_object' not in response:
+                response['attestation_object'] = response['attestationObject']
+
         registration_credential = RegistrationCredential(**cleaned_data)
 
         return registration_credential
