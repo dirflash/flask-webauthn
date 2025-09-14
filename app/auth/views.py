@@ -123,8 +123,13 @@ def parse_registration_credential(credential_data):
         if 'rawId' in credential_data:
             if 'id' not in credential_data:
                 credential_data['id'] = credential_data['rawId']
-            # Map rawId to raw_id for the webauthn library
-            credential_data['raw_id'] = credential_data['rawId']
+            # Map rawId to raw_id for the webauthn library - convert base64url to bytes
+            import base64
+            # Add padding if needed for base64url decoding
+            raw_id_str = credential_data['rawId']
+            # Add padding to make length multiple of 4
+            raw_id_str += '=' * (4 - len(raw_id_str) % 4) if len(raw_id_str) % 4 else ''
+            credential_data['raw_id'] = base64.urlsafe_b64decode(raw_id_str)
             # Remove rawId to avoid conflicts
             del credential_data['rawId']
 
