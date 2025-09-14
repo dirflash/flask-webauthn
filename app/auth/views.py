@@ -160,13 +160,22 @@ def parse_registration_credential(credential_data):
 
             # Create a proper response object structure
             from webauthn.helpers.structs import AuthenticatorAttestationResponse
+            import base64
 
-            # Map the browser field names to what the library expects
+            # Map the browser field names to what the library expects and decode base64 data
             response_data = {}
             if 'clientDataJSON' in response_dict:
-                response_data['client_data_json'] = response_dict['clientDataJSON']
+                # Decode base64 clientDataJSON to bytes
+                client_data_b64 = response_dict['clientDataJSON']
+                # Add padding if needed
+                client_data_b64 += '=' * (4 - len(client_data_b64) % 4) if len(client_data_b64) % 4 else ''
+                response_data['client_data_json'] = base64.urlsafe_b64decode(client_data_b64)
             if 'attestationObject' in response_dict:
-                response_data['attestation_object'] = response_dict['attestationObject']
+                # Decode base64 attestationObject to bytes
+                attestation_b64 = response_dict['attestationObject']
+                # Add padding if needed
+                attestation_b64 += '=' * (4 - len(attestation_b64) % 4) if len(attestation_b64) % 4 else ''
+                response_data['attestation_object'] = base64.urlsafe_b64decode(attestation_b64)
 
             # Create the AuthenticatorAttestationResponse object
             cleaned_data['response'] = AuthenticatorAttestationResponse(**response_data)
